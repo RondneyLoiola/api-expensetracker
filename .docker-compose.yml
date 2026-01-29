@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # Serviço da API
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastify-api
+    ports:
+      - "3000:3000"  # Mapeia a porta 3000 do container para a porta 3000 do host
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/expenseTracker  # Ajuste o nome do banco
+      - JWT_SECRET=d51873a70c4154e2ca43d5f847ca6058  # IMPORTANTE: Mude isso!
+      - PORT=3000
+    depends_on:
+      - mongodb  # Garante que o MongoDB inicie antes da API
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # Serviço do MongoDB
+  mongodb:
+    image: mongo:7-jammy
+    container_name: mongodb
+    ports:
+      - "27017:27017"  # Porta do MongoDB
+    volumes:
+      - mongodb_data:/data/db  # Persiste os dados do MongoDB
+    environment:
+      - MONGO_INITDB_DATABASE=expenseTracker  # Nome do banco inicial
+    networks:
+      - app-network
+    restart: unless-stopped
+
+# Rede para comunicação entre containers
+networks:
+  app-network:
+    driver: bridge
+
+# Volume para persistir dados do MongoDB
+volumes:
+  mongodb_data:
