@@ -5,7 +5,7 @@ const startServer = async () => {
     try {
         await connectDB();
 
-        await app.listen({port: 3000}).then(() => {
+        await app.listen({port: 3000, host: "0.0.0.0"}).then(() => {
             console.log("✅ Server running on port 3000")
         })
     } catch (err) {
