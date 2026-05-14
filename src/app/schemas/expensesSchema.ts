@@ -23,7 +23,7 @@ const expenseSchema = new mongoose.Schema(
 			type: mongoose.Schema.Types.ObjectId,
 			ref: "User",
 			required: true,
-		}
+		},
 	},
 	{
 		timestamps: true,

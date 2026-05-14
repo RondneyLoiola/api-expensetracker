@@ -2,11 +2,15 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: type: any */
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import type { CategorySummary, CreateExpenseBody, ExpenseFilter, ExpenseSummary } from "../../types/types";
+import type {
+	CategorySummary,
+	CreateExpenseBody,
+	ExpenseFilter,
+	ExpenseSummary,
+} from "../../types/types";
 import { validatorError } from "../../utils/validatorError";
 import { Category } from "../schemas/categorySchema";
 import { Expense } from "../schemas/expensesSchema";
-import { User } from "../schemas/userSchema";
 
 export const createExpense = async (
 	req: FastifyRequest<{ Body: CreateExpenseBody }>,
@@ -69,7 +73,7 @@ export const getExpenses = async (
 			.sort({ date: -1 });
 
 		return reply.status(200).send({
-			expenses
+			expenses,
 		});
 	} catch (error) {
 		console.error("Error fetching expenses:", error);
@@ -78,7 +82,7 @@ export const getExpenses = async (
 };
 
 export const getMyExpenses = async (
-	req: FastifyRequest<{Querystring: {month: string, year: string}}>,
+	req: FastifyRequest<{ Querystring: { month: string; year: string } }>,
 	reply: FastifyReply,
 ) => {
 	try {
@@ -115,7 +119,7 @@ export const getMyExpenses = async (
 			.sort({ date: -1 });
 
 		return reply.status(200).send({
-			expenses
+			expenses,
 		});
 	} catch (error) {
 		console.error("Error fetching my expenses:", error);
@@ -124,7 +128,7 @@ export const getMyExpenses = async (
 };
 
 export const getExpenseSummary = async (
-	req: FastifyRequest<{Querystring: {month: string, year: string}}>,
+	req: FastifyRequest<{ Querystring: { month: string; year: string } }>,
 	reply: FastifyReply,
 ): Promise<void> => {
 	if (!req.user) {
@@ -157,44 +161,51 @@ export const getExpenseSummary = async (
 		let totalExpenses = 0;
 		const groupedExpenses = new Map<string, CategorySummary>();
 
-		for(const expense of expenses) {
-			console.log(expense);
-			const existing = groupedExpenses.get(expense.category._id.toString()) ?? {
-				categoryId: expense.category._id.toString(),
-				categoryName: expense.category.name,
-				categoryColor: expense.category.color,
-				amount: 0,
-				percentage: 0
+		for (const expense of expenses) {
+			const populatedCategory = expense.category as unknown as {
+				_id: { toString: () => string };
+				name: string;
+				color: string;
 			};
-			
+
+			const categoryId = populatedCategory._id.toString();
+
+			const existing = groupedExpenses.get(
+				populatedCategory._id.toString(),
+			) ?? {
+				categoryId: populatedCategory._id.toString(),
+				categoryName: populatedCategory.name,
+				categoryColor: populatedCategory.color,
+				amount: 0,
+				percentage: 0,
+			};
+
 			existing.amount += expense.amount;
 			totalAmount += expense.amount;
 			totalExpenses++;
 
-			groupedExpenses.set(expense.category._id.toString(), existing);
+			groupedExpenses.set(categoryId, existing);
 		}
 
 		const summary: ExpenseSummary = {
 			totalAmount,
 			totalExpenses,
-			expensesByCategory: Array.from(groupedExpenses.values()).map(expense => ({
-				...expense,
-				percentage: Number.parseFloat(((expense.amount / totalAmount) * 100).toFixed(2))
-			})).sort((a, b) => b.amount - a.amount)
-		}
+			expensesByCategory: Array.from(groupedExpenses.values())
+				.map((expense) => ({
+					...expense,
+					percentage: Number.parseFloat(
+						((expense.amount / totalAmount) * 100).toFixed(2),
+					),
+				}))
+				.sort((a, b) => b.amount - a.amount),
+		};
 
 		return reply.status(200).send(summary);
-		
 	} catch (error) {
 		console.log(error);
 		return reply.status(500).send({ message: "Error fetching expenses" });
 	}
-
-	
-	
-
-	
-}
+};
 
 export const updateExpense = async (
 	req: FastifyRequest<{
@@ -318,18 +329,18 @@ export const deleteAllMyExpenses = async (
 
 		// Se não houver despesas, retornar mensagem informativa
 		if (userExpenses.length === 0) {
-			return reply.status(200).send({ 
+			return reply.status(200).send({
 				message: "No expenses to delete",
-				deletedCount: 0 
+				deletedCount: 0,
 			});
 		}
 
 		// Deletar todas as despesas do usuário
 		const result = await Expense.deleteMany({ user: req.user.userId });
 
-		return reply.status(200).send({ 
+		return reply.status(200).send({
 			message: "All expenses deleted successfully",
-			deletedCount: result.deletedCount 
+			deletedCount: result.deletedCount,
 		});
 	} catch (error) {
 		console.error("Error deleting all expenses:", error);
