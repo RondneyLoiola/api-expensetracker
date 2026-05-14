@@ -2,7 +2,7 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: type: any */
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import type { CreateExpenseBody } from "../../types/types";
+import type { CategorySummary, CreateExpenseBody, ExpenseFilter, ExpenseSummary } from "../../types/types";
 import { validatorError } from "../../utils/validatorError";
 import { Category } from "../schemas/categorySchema";
 import { Expense } from "../schemas/expensesSchema";
@@ -68,19 +68,8 @@ export const getExpenses = async (
 			.populate("user", "name email")
 			.sort({ date: -1 });
 
-		const total = await Expense.aggregate([
-			{
-				$group: {
-					_id: null,
-					totalAmount: { $sum: "$amount" },
-					totalExpenses: { $sum: 1 },
-				},
-			},
-		]);
-
 		return reply.status(200).send({
-			expenses,
-			summary: total[0] || { totalAmount: 0, totalExpenses: 0 },
+			expenses
 		});
 	} catch (error) {
 		console.error("Error fetching expenses:", error);
@@ -88,47 +77,8 @@ export const getExpenses = async (
 	}
 };
 
-export const getUserExpenses = async (
-	req: FastifyRequest<{ Params: { userId: string } }>,
-	reply: FastifyReply,
-) => {
-	try {
-		const { userId } = req.params;
-
-		if (!/^[0-9a-fA-F]{24}$/.test(userId)) {
-			return reply.status(400).send({ message: "Invalid user ID format" });
-		}
-
-		const userExists = await User.findById(userId);
-
-		if (!userExists) {
-			return reply.status(404).send({ message: "User not found" });
-		}
-
-		const expenses = await Expense.find({ user: userId })
-			.populate("category")
-			.sort({ date: -1 });
-
-		const totalAmount = expenses.reduce(
-			(sum, expense) => sum + expense.amount,
-			0,
-		);
-
-		return reply.status(200).send({
-			expenses,
-			summary: {
-				totalExpenses: expenses.length,
-				totalAmount: totalAmount,
-			},
-		});
-	} catch (error) {
-		console.error("Error fetching user expenses:", error);
-		return reply.status(500).send({ message: "Internal server error" });
-	}
-};
-
 export const getMyExpenses = async (
-	req: FastifyRequest,
+	req: FastifyRequest<{Querystring: {month: string, year: string}}>,
 	reply: FastifyReply,
 ) => {
 	try {
@@ -140,7 +90,7 @@ export const getMyExpenses = async (
 		const { month, year } = req.query as { month?: string; year?: string };
 
 		// Criar filtro base
-		const filter: any = { user: req.user.userId };
+		const filter: ExpenseFilter = { user: req.user.userId };
 
 		// Se mês e ano foram fornecidos, adicionar filtro de data
 		if (month && year) {
@@ -155,7 +105,7 @@ export const getMyExpenses = async (
 
 			filter.date = {
 				$gte: startDate,
-				$lt: endDate,
+				$lte: endDate,
 			};
 		}
 
@@ -164,38 +114,87 @@ export const getMyExpenses = async (
 			.populate("category")
 			.sort({ date: -1 });
 
-		// Calcular totais do período filtrado
-		const totalAmount = expenses.reduce(
-			(sum, expense) => sum + expense.amount,
-			0,
-		);
-
-		// Buscar o total geral de despesas do usuário (sem filtro)
-		const totalUserExpenses = await Expense.countDocuments({
-			user: req.user.userId,
-		});
-
 		return reply.status(200).send({
-			expenses,
-			summary: {
-				totalExpenses: expenses.length, // Total do período filtrado
-				totalAmount: totalAmount, // Total em dinheiro do período
-				totalUserExpenses: totalUserExpenses, // Total geral de despesas do usuário
-				// Informações sobre o filtro aplicado
-				filter:
-					month && year
-						? {
-								month: parseInt(month),
-								year: parseInt(year),
-							}
-						: null,
-			},
+			expenses
 		});
 	} catch (error) {
 		console.error("Error fetching my expenses:", error);
 		return reply.status(500).send({ message: "Internal server error" });
 	}
 };
+
+export const getExpenseSummary = async (
+	req: FastifyRequest<{Querystring: {month: string, year: string}}>,
+	reply: FastifyReply,
+): Promise<void> => {
+	if (!req.user) {
+		return reply.status(401).send({ message: "Unauthorized" });
+	}
+
+	const { month, year } = req.query;
+
+	const filter: ExpenseFilter = { user: req.user.userId };
+
+	if (month && year) {
+		const monthNumber = parseInt(month);
+		const yearNumber = parseInt(year);
+		// Primeiro dia do mês
+		const startDate = new Date(yearNumber, monthNumber - 1, 1);
+		// Primeiro dia do próximo mês
+		const endDate = new Date(yearNumber, monthNumber, 1);
+		filter.date = {
+			$gte: startDate,
+			$lte: endDate,
+		};
+	} else {
+		return reply.status(400).send({ message: "Month and year are required" });
+	}
+
+	try {
+		const expenses = await Expense.find(filter).populate("category");
+
+		let totalAmount = 0;
+		let totalExpenses = 0;
+		const groupedExpenses = new Map<string, CategorySummary>();
+
+		for(const expense of expenses) {
+			console.log(expense);
+			const existing = groupedExpenses.get(expense.category._id.toString()) ?? {
+				categoryId: expense.category._id.toString(),
+				categoryName: expense.category.name,
+				categoryColor: expense.category.color,
+				amount: 0,
+				percentage: 0
+			};
+			
+			existing.amount += expense.amount;
+			totalAmount += expense.amount;
+			totalExpenses++;
+
+			groupedExpenses.set(expense.category._id.toString(), existing);
+		}
+
+		const summary: ExpenseSummary = {
+			totalAmount,
+			totalExpenses,
+			expensesByCategory: Array.from(groupedExpenses.values()).map(expense => ({
+				...expense,
+				percentage: Number.parseFloat(((expense.amount / totalAmount) * 100).toFixed(2))
+			})).sort((a, b) => b.amount - a.amount)
+		}
+
+		return reply.status(200).send(summary);
+		
+	} catch (error) {
+		console.log(error);
+		return reply.status(500).send({ message: "Error fetching expenses" });
+	}
+
+	
+	
+
+	
+}
 
 export const updateExpense = async (
 	req: FastifyRequest<{

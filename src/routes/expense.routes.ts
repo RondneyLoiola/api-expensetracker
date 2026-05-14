@@ -5,8 +5,8 @@ import {
 	deleteExpense,
 	getExpenses,
 	getMyExpenses,
-	getUserExpenses,
 	updateExpense,
+	getExpenseSummary
 } from "../app/controllers/expense";
 import { authMiddleware } from "../app/middleware/auth";
 
@@ -15,9 +15,9 @@ export async function expenseRoutes(fastify: FastifyInstance) {
 
 	fastify.post("/expenses", createExpense);
 	fastify.get("/expenses/me", getMyExpenses); 
-	fastify.get("/expenses/user/:userId", getUserExpenses);
+	fastify.get("/expenses/summary/me", getExpenseSummary);
 	fastify.get("/expenses", getExpenses);
 	fastify.put("/expenses/:expenseId", updateExpense);
 	fastify.delete("/expenses/:expenseId", deleteExpense);
-	fastify.delete('/expenses/me/all', deleteAllMyExpenses);
+	fastify.delete("/expenses/me/all", deleteAllMyExpenses);
 }
